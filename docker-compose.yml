@@ -1,0 +1,8 @@
+services:
+  weight-sync:
+    image: weight-sync:latest
+    build: /home/watsam/weight_sync
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - "/home/watsam/weight_sync/data:/data"
