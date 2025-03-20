@@ -23,4 +23,6 @@ RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 COPY weight_sync.py .
 COPY excel_interface.py .
 
+LABEL org.opencontainers.image.source=https://github.com/watsona4/weight_sync
+
 CMD ["gunicorn", "--bind=192.168.1.5:8568", "--access-logfile", "-", "--error-logfile", "-", "weight_sync:app"]

@@ -1,7 +1,7 @@
 services:
   weight-sync:
-    image: weight-sync:latest
-    build: /home/watsam/weight_sync
+    image: ghcr.io/watsona4/weight-sync:latest
+    build: .
     restart: unless-stopped
     network_mode: host
     volumes:
