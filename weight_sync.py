@@ -1,4 +1,5 @@
 import logging
+import os
 import os.path
 import shelve
 
@@ -8,6 +9,8 @@ from sortedcontainers import SortedDict
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from excel_interface import sync
+
+TZ: str = str(os.environ.get("TZ", "UTC"))
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -29,7 +32,7 @@ def parse_percentage(percentage):
 
 def parse_timestamp(timestamp):
     pd_ts = pd.Timestamp(timestamp, tz="UTC")
-    return pd_ts.astimezone("America/New_York").to_period("s")
+    return pd_ts.astimezone(TZ).to_period("s")
 
 
 DB_FILENAME = "/data/weight_data.db"
@@ -52,13 +55,9 @@ def post():
     for key, val in raw_data.items():
         if "grams" in val:
             weight = True
-            data.setdefault(parse_timestamp(key), [None, None])[0] = (
-                parse_weight(val)
-            )
+            data.setdefault(parse_timestamp(key), [None, None])[0] = parse_weight(val)
         else:
-            data.setdefault(parse_timestamp(key), [None, None])[1] = (
-                parse_percentage(val)
-            )
+            data.setdefault(parse_timestamp(key), [None, None])[1] = parse_percentage(val)
 
     logger.debug(f"post(): {weight=}")
     logger.debug(f"post(): {len(data)=}")

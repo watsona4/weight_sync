@@ -3,6 +3,25 @@ services:
     image: ghcr.io/watsona4/weight-sync:latest
     build: .
     restart: unless-stopped
-    network_mode: host
     volumes:
-      - "/home/watsam/weight_sync/data:/data"
+      - ./data:/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - weight-sync
+    env_file:
+      - config.env
+  nginx:
+    image: nginx:latest
+    restart: always
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+    ports:
+      - 8568:8080
+    networks:
+      - weight-sync
+
+networks:
+  weight-sync:
+    driver: bridge
+
