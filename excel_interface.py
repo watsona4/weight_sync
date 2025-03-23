@@ -1,5 +1,4 @@
 import logging
-import os.path
 from enum import IntEnum
 from functools import partial
 
@@ -7,7 +6,6 @@ import numpy as np
 import pandas as pd
 from google.auth.transport.requests import Request  # type: ignore
 from google.oauth2.credentials import Credentials  # type: ignore
-from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore
 from googleapiclient.discovery import build  # type: ignore
 from numpy.typing import NDArray
 from scipy.optimize import curve_fit  # type: ignore
@@ -83,29 +81,23 @@ class ExcelInterface:
     def __init__(self):
         self.sheet = None
 
-    def sync(self, data: dict[pd.Period, list[float | None]]):
+    @classmethod
+    def sync(cls, data: dict[pd.Period, list[float | None]]):
         LOG.debug(f"sync(): {len(data)=}")
         LOG.debug(f"sync(): {data=}")
-        self.auth()
-        self.write_data(data)
-        xw, yw, xf, yf = self.read_data()
-        wwinf, wsol, _ = self.compute_parameters(DataType.WEIGHT, xw, yw)
-        fwinf, fsol, _ = self.compute_parameters(DataType.BODYFAT, xf, yf)
-        self.write_parameters(wwinf, wsol, fwinf, fsol)
+        iface = cls()
+        iface.auth()
+        iface.write_data(data)
+        xw, yw, xf, yf = iface.read_data()
+        wwinf, wsol, _ = iface.compute_parameters(DataType.WEIGHT, xw, yw)
+        fwinf, fsol, _ = iface.compute_parameters(DataType.BODYFAT, xf, yf)
+        iface.write_parameters(wwinf, wsol, fwinf, fsol)
 
     def auth(self):
         LOG.debug("auth():")
-        creds = None
-        if os.path.exists(TOKEN):
-            creds = Credentials.from_authorized_user_file(TOKEN, SCOPES)
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
-                creds = flow.run_local_server(port=0)
-            with open(TOKEN, "w") as token:
-                token.write(creds.to_json())
+        creds = Credentials.from_authorized_user_file(TOKEN, SCOPES)
+        if not creds.valid:
+            creds.refresh(Request())
         service = build("sheets", "v4", credentials=creds)
         self.sheet = service.spreadsheets()
 
@@ -162,13 +154,3 @@ class ExcelInterface:
             valueInputOption="RAW",
             body={"values": values},
         ).execute()
-
-
-def sync(data: dict[pd.Period, list[float | None]]):
-    iface = ExcelInterface()
-    iface.sync(data)
-
-
-def auth():
-    iface = ExcelInterface()
-    iface.auth()
