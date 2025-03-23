@@ -18,4 +18,4 @@ COPY weight_sync.py excel_interface.py .
 
 LABEL org.opencontainers.image.source=https://github.com/watsona4/weight_sync
 
-CMD ["gunicorn", "--access-logfile", "-", "--error-logfile", "-", "weight_sync:app"]
+CMD ["gunicorn", "--access-logfile", "-", "--error-logfile", "-", "--bind=0.0.0.0:8000", "--log-level=debug", "weight_sync:app"]
