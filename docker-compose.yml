@@ -20,6 +20,15 @@ services:
       - 8568:8080
     networks:
       - weight-sync
+  poller:
+    image: ghcr.io/watsona4/weight-sync-poller:latest
+    build: poller
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    env_file:
+      - config.env
 
 networks:
   weight-sync:
