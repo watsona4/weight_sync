@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 import os.path
@@ -22,8 +23,8 @@ LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
 logging.basicConfig()
 LOG: logging.Logger = logging.getLogger("weight_sync")
 
-LOG.setLevel(getattr(logging, LOG_LEVEL.upper(), None))  # type: ignore
-EXCEL_LOG.setLevel(getattr(logging, LOG_LEVEL.upper(), None))  # type: ignore
+LOG.setLevel(getattr(logging, LOG_LEVEL.upper(), "INFO"))
+EXCEL_LOG.setLevel(getattr(logging, LOG_LEVEL.upper(), "INFO"))
 
 app: Flask = Flask(__name__)
 
@@ -53,7 +54,16 @@ def parse_timestamp(timestamp: str) -> pd.Period:
     return pd_ts.astimezone(TZ).to_period("s")  # type: ignore
 
 
+def parse_date(timestamp: str = None, period: pd.Period = None) -> datetime.date:
+    if timestamp is not None:
+        pd_ts = pd.Timestamp(timestamp, tz=TZ)
+    if period is not None:
+        pd_ts = period.to_timestamp().tz_localize(TZ)
+    return pd_ts.date()
+
+
 DB_FILENAME: str = "/data/weight_data.db"
+CUTOFF_DATE: str = parse_date(timestamp=os.environ.get("CUTOFF_DATE", "01/01/1900"))
 
 
 @app.route("/auth", methods=["GET", "POST"])
@@ -104,8 +114,10 @@ def callback():
 @app.post("/")
 def sync():
 
-    if not CACHE.has("creds"):
-        return redirect("https://home.battenkillwoodworks.com/sync/auth")  # url_for("auth"))
+    LOG.info(f"sync(): {request=}")
+
+    # if not CACHE.has("creds"):
+    #    return redirect("https://home.battenkillwoodworks.com/sync/auth")  # url_for("auth"))
 
     if os.path.exists(DB_FILENAME):
         with shelve.open(DB_FILENAME) as db:
@@ -119,13 +131,14 @@ def sync():
 
     weight = False
     for key, val in raw_data.items():
+        date = parse_timestamp(key)
         if "grams" in val:
             weight = True
-            data.setdefault(parse_timestamp(key), [None, None])[0] = parse_weight(val)
+            data.setdefault(date, [None, None])[0] = parse_weight(val)
         else:
-            data.setdefault(parse_timestamp(key), [None, None])[1] = parse_percentage(val)
+            data.setdefault(date, [None, None])[1] = parse_percentage(val)
 
-    LOG.debug(f"sync(): {weight=}")
+    data = {key: val for key, val in data.items() if parse_date(period=key) >= CUTOFF_DATE}
     LOG.debug(f"sync(): {len(data)=}")
     LOG.debug(f"sync(): {data=}")
 

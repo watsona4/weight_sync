@@ -85,6 +85,8 @@ class ExcelInterface:
     def sync(cls, data: dict[pd.Period, list[float | None]]):
         LOG.debug(f"sync(): {len(data)=}")
         LOG.debug(f"sync(): {data=}")
+        if len(data) == 0:
+            return
         iface = cls()
         iface.auth()
         iface.write_data(data)
