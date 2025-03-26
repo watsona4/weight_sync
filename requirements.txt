@@ -1,4 +1,5 @@
 cachelib
+redis
 flask
 gunicorn
 sortedcontainers

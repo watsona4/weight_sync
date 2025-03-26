@@ -9,8 +9,14 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - weight-sync
+    environment:
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
     env_file:
-      - config.env
+      - .env
+    depends_on:
+      - nginx
+      - redis
   nginx:
     image: nginx:latest
     restart: always
@@ -28,9 +34,27 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     env_file:
-      - config.env
+      - .env
+    depends_on:
+      - nginx
+      - weight-sync
+  redis:
+    image: redis:6.2-alpine
+    restart: always
+    ports:
+      - 6379:6379
+    command: redis-server --save 60 1 --requirepass ${REDIS_PASSWORD}
+    volumes: 
+      - redis:/data
+    env_file:
+      - .env
+    networks:
+      - weight-sync
 
 networks:
   weight-sync:
     driver: bridge
 
+volumes:
+  redis:
+    driver: local

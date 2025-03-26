@@ -85,8 +85,6 @@ class ExcelInterface:
     def sync(cls, data: dict[pd.Period, list[float | None]]):
         LOG.debug(f"sync(): {len(data)=}")
         LOG.debug(f"sync(): {data=}")
-        if len(data) == 0:
-            return
         iface = cls()
         iface.auth()
         iface.write_data(data)
@@ -107,8 +105,9 @@ class ExcelInterface:
         LOG.debug("read_data():")
         result = self.sheet.values().get(spreadsheetId=SPREADSHEET_ID, range="Data!M2:P").execute()
         array = np.array(result.get("values", []))
+        array[array == ""] = 0.0
         wvalues = np.array([[x, y] for x, y, _, _ in array], dtype=float)
-        fvalues = np.array([[x, y] for x, _, y, _ in array if y != ""], dtype=float)
+        fvalues = np.array([[x, y] for x, _, y, _ in array], dtype=float)
         return wvalues[:, 0], wvalues[:, 1], fvalues[:, 0], fvalues[:, 1]
 
     def write_data(self, data: dict[pd.Period, list[float | None]]):
@@ -133,8 +132,12 @@ class ExcelInterface:
         elif data_type == DataType.BODYFAT:
             winf = 0
         LOG.debug(f"compute_parameters(): {winf=}")
-        sol, _ = curve_fit(partial(f, winf=winf), x, y, bounds=BOUNDS, max_nfev=10000)
-        LOG.debug(f"compute_parameters(): {sol=}")
+        try:
+            sol, _ = curve_fit(partial(f, winf=winf), x, y, bounds=BOUNDS, max_nfev=10000)
+            LOG.debug(f"compute_parameters(): {sol=}")
+        except Exception:
+            LOG.exception("Error in compute_parameters:")
+            return winf, np.zeros(7), 0
         err = e(x, y, sol, winf=winf)
         LOG.debug(f"compute_parameters(): {err=}")
         return winf, sol, err

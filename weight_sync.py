@@ -2,11 +2,10 @@ import datetime
 import logging
 import os
 import os.path
-import shelve
 
+import cachelib  # type: ignore
 import pandas as pd
-from cachelib import FileSystemCache  # type: ignore
-from flask import Flask, redirect, request, session, url_for
+from flask import Flask, redirect, request
 from google.auth.transport.requests import Request  # type: ignore
 from google.oauth2.credentials import Credentials  # type: ignore
 from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore
@@ -28,15 +27,15 @@ EXCEL_LOG.setLevel(getattr(logging, LOG_LEVEL.upper(), "INFO"))
 
 app: Flask = Flask(__name__)
 
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your_default_secret_key")
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_host=1)  # type: ignore
-app.proto = "https"
-app.server_name = "home.battenkillwoodworks.com"
-app.application_base = "/sync"
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_host=1, x_prefix=1)  # type: ignore
+
+SERVER: str = "https://home.battenkillwoodworks.com/sync"
 
 FLOW = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
 
-CACHE = FileSystemCache(cache_dir="/data")
+CACHE = cachelib.RedisCache(
+    host="redis", port=6379, db=0, password=os.environ.get("REDIS_PASSWORD")
+)
 
 
 def parse_weight(weight: str) -> float:
@@ -54,7 +53,7 @@ def parse_timestamp(timestamp: str) -> pd.Period:
     return pd_ts.astimezone(TZ).to_period("s")  # type: ignore
 
 
-def parse_date(timestamp: str = None, period: pd.Period = None) -> datetime.date:
+def parse_date(timestamp: str | None = None, period: pd.Period | None = None) -> datetime.date:
     if timestamp is not None:
         pd_ts = pd.Timestamp(timestamp, tz=TZ)
     if period is not None:
@@ -63,7 +62,7 @@ def parse_date(timestamp: str = None, period: pd.Period = None) -> datetime.date
 
 
 DB_FILENAME: str = "/data/weight_data.db"
-CUTOFF_DATE: str = parse_date(timestamp=os.environ.get("CUTOFF_DATE", "01/01/1900"))
+CUTOFF_DATE: datetime.date = parse_date(timestamp=os.environ.get("CUTOFF_DATE", "01/01/1900"))
 
 
 @app.route("/auth", methods=["GET", "POST"])
@@ -74,11 +73,11 @@ def auth():
         creds = Credentials.from_authorized_user_file(TOKEN, SCOPES)
         if not creds.valid:
             creds.refresh(Request())
+        CACHE.add("creds", creds)
         return "OK", 200
 
-    FLOW.redirect_uri = (  # url_for("callback", _external=True)
-        "https://home.battenkillwoodworks.com/sync/callback"
-    )
+    FLOW.redirect_uri = f"{SERVER}/callback"
+
     LOG.debug(f"auth(): {FLOW.redirect_uri=}")
 
     authorization_url, state = FLOW.authorization_url(
@@ -87,6 +86,7 @@ def auth():
     LOG.debug(f"auth(): {authorization_url=}")
     LOG.debug(f"auth(): {state=}")
     CACHE.add("state", state)
+    LOG.debug(f"auth(): {CACHE.get("state")=}")
 
     return redirect(authorization_url)
 
@@ -97,13 +97,14 @@ def callback():
     LOG.debug(f"callback(): {request=}")
     state = CACHE.get("state")
     LOG.debug(f"callback(): {state=}")
-    # if state != request.args["state"]:
-    #     return "Invalid state parameter", 401
+    if state != request.args["state"]:
+        return "Invalid state parameter", 401
 
     FLOW.fetch_token(authorization_response=request.url.replace("http", "https"))
 
     creds = FLOW.credentials
     CACHE.add("creds", creds)
+    LOG.debug(f"callback(): {CACHE.get("creds")=}")
 
     with open(TOKEN, "w") as token:
         token.write(creds.to_json())
@@ -115,13 +116,13 @@ def callback():
 def sync():
 
     LOG.info(f"sync(): {request=}")
+    LOG.debug(f"sync(): {CACHE.get("creds")=}")
 
-    # if not CACHE.has("creds"):
-    #    return redirect("https://home.battenkillwoodworks.com/sync/auth")  # url_for("auth"))
+    if not CACHE.has("creds"):
+        return redirect(f"{SERVER}/auth")
 
-    if os.path.exists(DB_FILENAME):
-        with shelve.open(DB_FILENAME) as db:
-            data = db["data"]
+    if CACHE.has("data"):
+        data = CACHE.get("data")
     else:
         data = SortedDict({})
 
@@ -129,11 +130,9 @@ def sync():
     LOG.debug(f"sync(): {len(raw_data)=}")
     LOG.debug(f"sync(): {raw_data=}")
 
-    weight = False
     for key, val in raw_data.items():
         date = parse_timestamp(key)
         if "grams" in val:
-            weight = True
             data.setdefault(date, [None, None])[0] = parse_weight(val)
         else:
             data.setdefault(date, [None, None])[1] = parse_percentage(val)
@@ -144,7 +143,6 @@ def sync():
 
     ExcelInterface.sync(data)
 
-    with shelve.open(DB_FILENAME) as db:
-        db["data"] = data
+    CACHE.add("data", data)
 
     return "OK", 200
