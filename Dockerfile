@@ -10,6 +10,8 @@ FROM python:3.12-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache curl
+
 COPY --from=builder /app/wheels /wheels
 
 RUN pip install --no-cache --break-system-packages /wheels/*

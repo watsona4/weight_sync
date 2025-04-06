@@ -1,5 +1,6 @@
 import logging
 import os
+import socket
 import sys
 import time
 
@@ -11,6 +12,29 @@ LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
 logging.basicConfig()
 LOG: logging.Logger = logging.getLogger("poller")
 LOG.setLevel(getattr(logging, LOG_LEVEL.upper()))
+
+SOCKET_PATH = "/tmp/unix_socket_example.sock"
+
+if os.path.exists(SOCKET_PATH):
+    os.remove(SOCKET_PATH)
+
+
+def server():
+    server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server_socket.bind(SOCKET_PATH)
+    server_socket.listen(1)
+    LOG.info("Server listening on %s", SOCKET_PATH)
+
+    while True:
+        conn, addr = server_socket.accept()
+        with conn:
+            LOG.info("Connected by %s", addr)
+            while True:
+                data = conn.recv(1024)
+                if not data:
+                    break
+                LOG.info("Received: %s", data.decode())
+                conn.sendall(data) # Echo back to client
 
 
 def poll():
@@ -32,4 +56,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    import threading
+    server_thread = threading.Thread(target=server)
+    server_thread.daemon = True
+    server_thread.start()    
     sys.exit(main())

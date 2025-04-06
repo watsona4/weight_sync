@@ -15,4 +15,8 @@ server {
         proxy_redirect off;
         proxy_pass http://weight-sync:8000/;
     }
+
+    location /health/ {
+        return 200;
+    }
 }

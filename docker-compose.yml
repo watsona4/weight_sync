@@ -17,6 +17,8 @@ services:
     depends_on:
       - nginx
       - redis
+    healthcheck:
+      test: curl -f http://localhost:8000/health
   nginx:
     image: nginx:latest
     restart: always
@@ -26,6 +28,8 @@ services:
       - 8568:8080
     networks:
       - weight-sync
+    healthcheck:
+      test: curl -f http://localhost:8080/health
   poller:
     image: ghcr.io/watsona4/weight-sync-poller:latest
     build: poller
@@ -50,6 +54,8 @@ services:
       - .env
     networks:
       - weight-sync
+    healthcheck:
+      test: redis-cli -a ${REDIS_PASSWORD} --raw incr ping
 
 networks:
   weight-sync:

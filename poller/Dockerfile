@@ -14,7 +14,9 @@ COPY --from=builder /app/wheels /wheels
 
 RUN pip install --no-cache --break-system-packages /wheels/*
 
-COPY poller.py .
+COPY poller.py healthcheck.py ./
+
+HEALTHCHECK CMD python healthcheck.py
 
 LABEL org.opencontainers.image.source=https://github.com/watsona4/weight_sync
 

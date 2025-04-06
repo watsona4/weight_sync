@@ -137,7 +137,7 @@ def sync():
         else:
             data.setdefault(date, [None, None])[1] = parse_percentage(val)
 
-    data = {key: val for key, val in data.items() if parse_date(period=key) >= CUTOFF_DATE}
+    # data = {key: val for key, val in data.items() if parse_date(period=key) >= CUTOFF_DATE}
     LOG.debug(f"sync(): {len(data)=}")
     LOG.debug(f"sync(): {data=}")
 
@@ -145,4 +145,10 @@ def sync():
 
     CACHE.add("data", data)
 
+    return "OK", 200
+
+
+@app.get("/health")
+def health():
+    LOG.debug(f"health(): {request=}")
     return "OK", 200
