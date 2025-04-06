@@ -4,8 +4,7 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
-from google.auth.transport.requests import Request  # type: ignore
-from google.oauth2.credentials import Credentials  # type: ignore
+from google.oauth2.service_account import Credentials  # type: ignore
 from googleapiclient.discovery import build  # type: ignore
 from numpy.typing import NDArray
 from scipy.optimize import curve_fit  # type: ignore
@@ -15,6 +14,7 @@ LOG: logging.Logger = logging.getLogger("excel_interface")
 
 SCOPES: list[str] = ["https://www.googleapis.com/auth/spreadsheets"]
 SPREADSHEET_ID: str = "1JNA2ZuNQuX2TNNFF_vuLC4pIwzz_upBPfuAk1qrCqx4"
+TOKEN: str = "/data/service_token.json"
 
 BOUNDS: tuple[tuple[float, ...], tuple[float, ...]] = (
     (-np.inf, -np.inf, -np.inf, -np.inf, 0.0, -np.inf, 0.0),
@@ -72,10 +72,6 @@ def convert_excel(period: pd.Period) -> float:
     return excel_serial_number
 
 
-TOKEN: str = "/data/token.json"
-CREDENTIALS: str = "/data/credentials.json"
-
-
 class ExcelInterface:
 
     def __init__(self):
@@ -95,9 +91,7 @@ class ExcelInterface:
 
     def auth(self):
         LOG.debug("auth():")
-        creds = Credentials.from_authorized_user_file(TOKEN, SCOPES)
-        if not creds.valid:
-            creds.refresh(Request())
+        creds = Credentials.from_service_account_file(TOKEN, scopes=SCOPES)
         service = build("sheets", "v4", credentials=creds)
         self.sheet = service.spreadsheets()
 
