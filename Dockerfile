@@ -16,7 +16,7 @@ COPY --from=builder /app/wheels /wheels
 
 RUN pip install --no-cache --break-system-packages /wheels/*
 
-COPY weight_sync.py excel_interface.py .
+COPY weight_sync.py excel_interface.py ./
 
 LABEL org.opencontainers.image.source=https://github.com/watsona4/weight_sync
 
