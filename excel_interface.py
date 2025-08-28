@@ -16,10 +16,10 @@ SCOPES: list[str] = ["https://www.googleapis.com/auth/spreadsheets"]
 SPREADSHEET_ID: str = "1JNA2ZuNQuX2TNNFF_vuLC4pIwzz_upBPfuAk1qrCqx4"
 TOKEN: str = "/data/service_token.json"
 
-BOUNDS: tuple[tuple[float, ...], tuple[float, ...]] = (
-    (-np.inf, -np.inf, -np.inf, -np.inf, 0.0, -np.inf, 0.0),
-    (np.inf, np.inf, np.inf, np.inf, 7.0, np.inf, 1.0),
-)
+BOUNDS: list[list[float, ...], list[float, ...]] = [
+    [-np.inf, -np.inf, 0.0, 0.0, 0.0, 0.0],
+    [np.inf, np.inf, np.inf, 7.0, np.inf, 1.0],
+]
 
 
 class DataType(IntEnum):
@@ -29,13 +29,13 @@ class DataType(IntEnum):
 
 def f(
     t: NDArray[np.float64],
-    w0: float,
     Δ0: float,
     c4: float,
     Δp1: float,
     τ1: float,
     Δp2: float,
     τ2: float,
+    w0: float,
     winf: float,
 ) -> NDArray[np.float64]:
     return (
@@ -59,8 +59,9 @@ def e(
     y: NDArray[np.float64],
     sol: NDArray[np.float64],
     winf: float | None = None,
+    w0: float | None = None,
 ) -> float:
-    fpart = f(x, *sol, winf) if winf is not None else f(x, *sol)  # type: ignore
+    fpart = f(x, *sol, w0, winf)
     return 1 - np.sum((fpart - y) ** 2) / np.sum(np.array(y) ** 2)
 
 
@@ -83,11 +84,15 @@ class ExcelInterface:
         LOG.debug(f"sync(): {data=}")
         iface = cls()
         iface.auth()
+        # iface.clear_data()
+        # iface.init_data()
         iface.write_data(data)
         xw, yw, xf, yf = iface.read_data()
-        wwinf, wsol, _ = iface.compute_parameters(DataType.WEIGHT, xw, yw)
-        fwinf, fsol, _ = iface.compute_parameters(DataType.BODYFAT, xf, yf)
-        iface.write_parameters(wwinf, wsol, fwinf, fsol)
+        xf = xf[yf != 0]
+        yf = yf[yf != 0]
+        wwinf, ww0, wsol, werr = iface.compute_parameters(DataType.WEIGHT, xw, yw)
+        fwinf, fw0, fsol, ferr = iface.compute_parameters(DataType.BODYFAT, xf, yf)
+        iface.write_parameters(wwinf, ww0, wsol, fwinf, fw0, fsol)
 
     def auth(self):
         LOG.debug("auth():")
@@ -115,36 +120,77 @@ class ExcelInterface:
             body={"values": values},
         ).execute()
 
+    def clear_data(self):
+        LOG.debug("clear_data():")
+        self.sheet.values().clear(spreadsheetId=SPREADSHEET_ID, range="Data!B2:C1000").execute()
+
+    def init_data(self):
+        LOG.debug("init_data():")
+        values = [[f"=A{i}+1"] for i in range(2, 999)]
+        LOG.debug(f"init_data(): {values=}")
+        self.sheet.values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Data!A3",
+            valueInputOption="USER_ENTERED",
+            body={"values": values},
+        ).execute()
+
     def compute_parameters(
         self, data_type: DataType, x: NDArray[np.float64], y: NDArray[np.float64]
-    ) -> tuple[float, NDArray[np.float64], float]:
+    ) -> tuple[float, float, NDArray[np.float64], float]:
         LOG.debug(f"compute_parameters(): {data_type=}")
         LOG.debug(f"compute_parameters(): {x=}")
         LOG.debug(f"compute_parameters(): {y=}")
         if data_type == DataType.WEIGHT:
             winf = (1800 - 88.362 + 5.677 * 43 - 4.799 * 76 * 2.54) / 13.397 * 2.2
+            bounds = [BOUNDS[0] + [300], BOUNDS[1] + [350]]
+            fun = partial(f, winf=winf)
         elif data_type == DataType.BODYFAT:
             winf = 0
+            bounds = [BOUNDS[0] + [40, 0], BOUNDS[1] + [49, 20]]
+            fun = f
         LOG.debug(f"compute_parameters(): {winf=}")
+        LOG.debug(f"compute_parameters(): {bounds=}")
+        LOG.debug(f"compute_parameters(): {f=}")
         try:
-            sol, _ = curve_fit(partial(f, winf=winf), x, y, bounds=BOUNDS, max_nfev=10000)
+            sol, _ = curve_fit(
+                fun,
+                x,
+                y,
+                bounds=bounds,
+            )
             LOG.debug(f"compute_parameters(): {sol=}")
         except Exception:
             LOG.exception("Error in compute_parameters:")
-            return winf, np.zeros(7), 0
-        err = e(x, y, sol, winf=winf)
+            return winf, 0, np.zeros(7), 0
+        if data_type == DataType.WEIGHT:
+            w0 = sol[-1]
+            sol = sol[:-1]
+        elif data_type == DataType.BODYFAT:
+            w0 = sol[-2]
+            winf = sol[-1]
+            sol = sol[:-2]
+        err = e(x, y, sol, winf=winf, w0=w0)
         LOG.debug(f"compute_parameters(): {err=}")
-        return winf, sol, err
+        return winf, w0, sol, err
 
     def write_parameters(
-        self, wwinf: float, wsol: NDArray[np.float64], fwinf: float, fsol: NDArray[np.float64]
+        self,
+        wwinf: float,
+        ww0: float,
+        wsol: NDArray[np.float64],
+        fwinf: float,
+        fw0: float,
+        fsol: NDArray[np.float64],
     ):
         LOG.debug(f"write_parameters(): {wwinf=}")
+        LOG.debug(f"write_parameters(): {ww0=}")
         LOG.debug(f"write_parameters(): {wsol=}")
         LOG.debug(f"write_parameters(): {fwinf=}")
+        LOG.debug(f"write_parameters(): {fw0=}")
         LOG.debug(f"write_parameters(): {fsol=}")
-        wvalues = [wwinf] + list(wsol)
-        fvalues = [fwinf] + list(fsol)
+        wvalues = [wwinf, ww0] + list(wsol)
+        fvalues = [fwinf, fw0] + list(fsol)
         values = np.array([wvalues, fvalues]).T.tolist()
         LOG.debug(f"write_parameters(): {values=}")
         self.sheet.values().update(

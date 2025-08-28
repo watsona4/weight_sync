@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+import threading
 
 import cachelib  # type: ignore
 import pandas as pd
@@ -27,6 +28,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_host=1, x_prefix=1)  # type: ig
 SERVER: str = "https://home.battenkillwoodworks.com/sync"
 
 CACHE = cachelib.RedisCache(host="redis", port=6379, password=os.environ.get("REDIS_PASSWORD"))
+
+LOCK = threading.Lock()
 
 
 def parse_weight(weight: str) -> float:
@@ -76,7 +79,8 @@ def sync():
     LOG.debug(f"sync(): {len(data)=}")
     LOG.debug(f"sync(): {data=}")
 
-    ExcelInterface.sync(data)
+    with LOCK:
+        ExcelInterface.sync(data)
 
     CACHE.add("data", data)
 
